@@ -1,0 +1,14 @@
+[project]
+name = "oci-demo"
+version = "0.1.0"
+description = "Oracle Autonomous AI Database - Select AI Demo"
+readme = "README.md"
+requires-python = ">=3.12.10"
+dependencies = [
+    "oracledb>=2.0.0",
+    "select_ai",
+    "pandas>=2.0.0",
+    "requests>=2.31.0",
+    "types-requests>=2.31.0",
+    "click>=8.1.0",
+]
