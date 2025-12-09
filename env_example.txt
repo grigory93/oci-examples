@@ -19,3 +19,7 @@ export ORACLE_DB_DSN=your_db_service_name_high
 # Get your compartment OCID from OCI Console > Identity > Compartments
 export OCI_COMPARTMENT_ID=ocid1.compartment.oc1..your_compartment_ocid
 
+# MCP Server Settings (optional)
+# export MCP_HOST=0.0.0.0
+# export MCP_PORT=8000
+

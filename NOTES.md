@@ -97,3 +97,30 @@ python3 -m http.server 8000
 # From local machine
 curl http://<public-ip>:8000
 ```
+
+
+## MCP
+
+### Cloud VM Deployment
+When you deploy to your VM:
+Copy the project
+Set environment variables in .env:
+ORACLE_DB_DSN
+ORACLE_DB_PASSWORD
+ORACLE_DB_USER (optional, defaults to ADMIN)
+
+Open firewall port 8000
+
+Run: uv run python -m src.mcp_server
+
+
+## Python on VM
+
+### Copy file
+```bash
+scp -i ~/.ssh/your-key.pem -r ~/wallet/Wallet_E2V9N49XQNYQ0Y4Z ubuntu@64.181.210.109:~/wallet/
+```
+
+```bash
+scp .env ubuntu@oci-dev-vm:~/oci-demo/
+```
