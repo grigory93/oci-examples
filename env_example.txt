@@ -1,0 +1,21 @@
+# Oracle Autonomous AI Database Connection Settings
+# Copy these environment variables to your shell or .env file
+
+# Database credentials
+export ORACLE_DB_PASSWORD=YourSecurePassword
+
+# Database connection string (choose one option)
+# Option 1: Service name from wallet (e.g., dbname_high, dbname_medium, dbname_low)
+export ORACLE_DB_DSN=your_db_service_name_high
+
+# Option 2: Full TLS connection string (get from OCI Console > Database Connection)
+# export ORACLE_DB_DSN="(description=(retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.us-phoenix-1.oraclecloud.com))(connect_data=(service_name=xxx_high.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))"
+
+# Wallet location (optional, for mTLS connections)
+# export ORACLE_WALLET_LOCATION=/path/to/wallet
+# export ORACLE_WALLET_PASSWORD=wallet_password
+
+# OCI Generative AI Settings
+# Get your compartment OCID from OCI Console > Identity > Compartments
+export OCI_COMPARTMENT_ID=ocid1.compartment.oc1..your_compartment_ocid
+
