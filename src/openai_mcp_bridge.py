@@ -15,7 +15,6 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -29,7 +28,7 @@ MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000/sse")
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-async def get_mcp_tools_as_openai_functions() -> list[dict[str, Any]]:
+async def get_mcp_tools_as_openai_functions():
     """Connect to MCP server and convert its tools to OpenAI function format."""
     async with sse_client(MCP_SERVER_URL) as (read, write):
         async with ClientSession(read, write) as session:
@@ -39,9 +38,9 @@ async def get_mcp_tools_as_openai_functions() -> list[dict[str, Any]]:
             tools_response = await session.list_tools()
             
             # Convert MCP tools to OpenAI function format
-            openai_functions: list[dict[str, Any]] = []
+            openai_functions = []
             for tool in tools_response.tools:
-                function_def: dict[str, Any] = {
+                function_def = {
                     "type": "function",
                     "function": {
                         "name": tool.name,
@@ -68,7 +67,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict):
             if result.content:
                 # Extract text from result
                 if isinstance(result.content, list) and len(result.content) > 0:
-                    return getattr(result.content[0], 'text', str(result.content[0]))
+                    return result.content[0].text
                 return str(result.content)
             return json.dumps({"error": "No content returned"})
 
@@ -83,12 +82,12 @@ async def chat_with_openai_and_mcp(user_message: str, model: str = "gpt-4o"):
     
     # Get MCP tools as OpenAI functions
     print("📦 Loading tools from MCP server...")
-    tools: list[dict[str, Any]] = await get_mcp_tools_as_openai_functions()
+    tools = await get_mcp_tools_as_openai_functions()
     print(f"✅ Loaded {len(tools)} tools: {[t['function']['name'] for t in tools]}")
     print("=" * 60)
     
     # Initialize conversation
-    messages: list[dict[str, str]] = [
+    messages = [
         {
             "role": "system",
             "content": (
@@ -108,16 +107,13 @@ async def chat_with_openai_and_mcp(user_message: str, model: str = "gpt-4o"):
         iteration += 1
         print(f"\n🔄 Iteration {iteration}")
         
-        # Call OpenAI - only include tools parameter if tools are available
-        create_kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-        }
-        if tools:
-            create_kwargs["tools"] = tools
-            create_kwargs["tool_choice"] = "auto"
-        
-        response = openai_client.chat.completions.create(**create_kwargs)
+        # Call OpenAI
+        response = openai_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+        )
         
         assistant_message = response.choices[0].message
         messages.append(assistant_message)

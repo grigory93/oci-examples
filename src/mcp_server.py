@@ -58,6 +58,37 @@ def get_connection() -> oracledb.Connection:
         )
 
 
+def is_system_table(table_name: str) -> bool:
+    """
+    Check if a table name is an Oracle system/internal table.
+    
+    Args:
+        table_name: The table name to check
+        
+    Returns:
+        True if it's a system table, False otherwise
+    """
+    # List of system table patterns to exclude
+    system_patterns = [
+        "$",  # Tables with $ in name (e.g., CLOUD_INGEST_LOG$)
+        "DR$",  # Oracle Text indexes
+        "MLOG$",  # Materialized view logs
+        "RUPD$",  # Updatable materialized views
+        "SYS_",  # System tables
+        "DBTOOLS$",  # Database tools tables
+        "ORDS_",  # Oracle REST Data Services tables
+        "APEX_",  # Oracle APEX tables
+    ]
+    
+    # Check if table name contains or starts with any system pattern
+    table_upper = table_name.upper()
+    for pattern in system_patterns:
+        if pattern in table_upper:
+            return True
+    
+    return False
+
+
 @mcp.tool
 def get_metadata(database_name: str = "default") -> dict[str, Any]:
     """
@@ -104,17 +135,20 @@ def get_metadata(database_name: str = "default") -> dict[str, Any]:
         cursor = connection.cursor()
         
         try:
-            # Fetch tables
+            # Fetch tables (exclude system tables)
             cursor.execute(tables_query)
             for row in cursor.fetchall():
                 table_name, table_comment = row
+                # Skip system tables
+                if is_system_table(table_name):
+                    continue
                 tables_dict[table_name] = {
                     "name": table_name,
                     "comment": table_comment,
                     "columns": [],
                 }
 
-            # Fetch columns
+            # Fetch columns (only for non-system tables)
             cursor.execute(columns_query)
             for row in cursor.fetchall():
                 (
