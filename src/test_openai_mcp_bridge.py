@@ -8,7 +8,7 @@ Requirements:
 - MCP server running at http://localhost:8000/sse
 
 Usage:
-    uv run python -m src.openai_mcp_bridge "Show me the database schema"
+    uv run python -m src.test_openai_mcp_bridge "Show me the database schema"
 """
 
 import asyncio
@@ -17,10 +17,13 @@ import os
 import sys
 from typing import Any
 
+from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from openai import OpenAI
 
+# Load environment variables from .env file
+load_dotenv()
 
 # MCP Server configuration
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000/sse")
