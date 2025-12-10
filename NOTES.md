@@ -122,5 +122,5 @@ scp -i ~/.ssh/your-key.pem -r ~/wallet/Wallet_E2V9N49XQNYQ0Y4Z ubuntu@64.181.210
 ```
 
 ```bash
-scp .env ubuntu@oci-dev-vm:~/oci-demo/
+/scp .env ubuntu@oci-dev-vm:~/oci-demo
 ```
