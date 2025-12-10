@@ -76,7 +76,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict):
             return json.dumps({"error": "No content returned"})
 
 
-async def chat_with_openai_and_mcp(user_message: str, model: str = "gpt-4o"):
+async def chat_with_openai_and_mcp(user_message: str, model: str = "gpt-4o-mini"):
     """
     Send a message to OpenAI, handle tool calls via MCP server, and return final response.
     """
