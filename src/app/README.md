@@ -1,4 +1,4 @@
-# Oracle Database Chat - Streamlit App
+# AI Data Platform Chat - Streamlit App
 
 A minimal, elegant chat interface for querying Oracle Autonomous Database using OpenAI models and MCP.
 
@@ -26,6 +26,12 @@ uv run streamlit run src/app/chat_app.py
 ```
 
 The app will open in your browser at `http://localhost:8501`
+
+On VM launch with 
+```bash
+uv run streamlit run src/app/chat_app.py --server.address 0.0.0.0 --server.port 8501
+```
+The app will open at `http://64.181.210.109:8501`
 
 ## Usage
 

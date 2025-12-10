@@ -31,7 +31,7 @@ load_dotenv()
 
 # Page configuration
 st.set_page_config(
-    page_title="Oracle Database Chat",
+    page_title="AI Data Platform Chat",
     page_icon="💬",
     layout="centered",
     initial_sidebar_state="collapsed"
