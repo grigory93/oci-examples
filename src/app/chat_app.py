@@ -12,13 +12,19 @@ import os
 import sys
 from pathlib import Path
 
+import altair as alt
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
 # Add parent directory to path to enable imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.app.mcp_chat import chat_stream, get_mcp_tools_as_openai_functions
+from src.app.mcp_chat import (
+    analyze_data_for_visualization,
+    chat_stream,
+    get_mcp_tools_as_openai_functions,
+)
 
 # Load environment variables
 load_dotenv()
@@ -58,6 +64,12 @@ def initialize_session_state():
     
     if "mcp_connected" not in st.session_state:
         st.session_state.mcp_connected = False
+    
+    if "last_sql_result" not in st.session_state:
+        st.session_state.last_sql_result = None
+    
+    if "show_chart" not in st.session_state:
+        st.session_state.show_chart = False
 
 
 async def load_mcp_tools():
@@ -74,11 +86,22 @@ async def load_mcp_tools():
 
 
 def render_header():
-    """Render the application header."""
-    st.title("💬 Oracle Database Chat")
+    """Render minimal application header."""
+    col1, col2 = st.columns([4, 1])
     
-    # Model selector in a compact row
-    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown("### Oracle Database Chat")
+    
+    with col2:
+        if st.session_state.mcp_connected:
+            st.caption("✅ MCP")
+        else:
+            st.caption("⚠️ MCP")
+
+
+def render_controls():
+    """Render controls near the chat input."""
+    col1, col2, col3 = st.columns([3, 1, 1])
     
     with col1:
         selected_model = st.selectbox(
@@ -92,22 +115,70 @@ def render_header():
             st.session_state.model = selected_model
     
     with col2:
-        if st.session_state.mcp_connected:
-            st.success("MCP Connected", icon="✅")
-        else:
-            st.warning("MCP Disconnected", icon="⚠️")
-    
-    with col3:
-        if st.button("Clear", use_container_width=True):
+        if st.button("Clear", use_container_width=True, type="secondary"):
             st.session_state.messages = []
+            st.session_state.last_sql_result = None
+            st.session_state.show_chart = False
             st.rerun()
     
-    st.divider()
+    with col3:
+        st.caption(f"{len(st.session_state.messages)} msgs")
+
+
+def create_chart(data: dict, viz_spec: dict) -> alt.Chart:
+    """Create an Altair chart from data and visualization spec."""
+    rows = data.get("rows", [])
+    df = pd.DataFrame(rows)
+    
+    chart_type = viz_spec.get("type", "bar")
+    x_field = viz_spec.get("x", {}).get("field")
+    y_field = viz_spec.get("y", {}).get("field")
+    x_label = viz_spec.get("x", {}).get("label", x_field)
+    y_label = viz_spec.get("y", {}).get("label", y_field)
+    title = viz_spec.get("title", "")
+    
+    # Ensure x_field is treated as nominal if it's not purely numeric
+    x_type = "nominal"
+    if df[x_field].dtype in ['int64', 'float64']:
+        # Check if it looks like a category (few unique values)
+        if df[x_field].nunique() > 10:
+            x_type = "quantitative"
+    
+    if chart_type == "bar":
+        chart = alt.Chart(df).mark_bar().encode(
+            x=alt.X(f"{x_field}:{x_type[0].upper()}", title=x_label, sort=None),
+            y=alt.Y(f"{y_field}:Q", title=y_label),
+            tooltip=[x_field, y_field]
+        )
+    elif chart_type == "line":
+        chart = alt.Chart(df).mark_line(point=True).encode(
+            x=alt.X(f"{x_field}:Q", title=x_label),
+            y=alt.Y(f"{y_field}:Q", title=y_label),
+            tooltip=[x_field, y_field]
+        )
+    else:
+        # Default to bar
+        chart = alt.Chart(df).mark_bar().encode(
+            x=alt.X(f"{x_field}:N", title=x_label, sort=None),
+            y=alt.Y(f"{y_field}:Q", title=y_label),
+            tooltip=[x_field, y_field]
+        )
+    
+    return chart.properties(
+        title=title,
+        width="container",
+        height=300
+    ).configure_axis(
+        labelFontSize=12,
+        titleFontSize=14
+    ).configure_title(
+        fontSize=16
+    )
 
 
 def render_chat_history():
     """Render chat message history."""
-    for message in st.session_state.messages:
+    for i, message in enumerate(st.session_state.messages):
         role = message["role"]
         content = message.get("content", "")
         
@@ -118,13 +189,49 @@ def render_chat_history():
         elif role == "assistant":
             with st.chat_message("assistant"):
                 st.markdown(content)
+                
+                # Check if this message has associated data for visualization
+                msg_data = message.get("sql_result")
+                if msg_data and msg_data.get("rows"):
+                    render_data_section(msg_data, key_suffix=f"history_{i}")
+
+
+def render_data_section(data: dict, key_suffix: str = ""):
+    """Render data table and optional visualization button."""
+    rows = data.get("rows", [])
+    
+    if not rows:
+        return
+    
+    # Show data as table
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    
+    # Check if data is chartable
+    viz_spec = analyze_data_for_visualization(data)
+    
+    if viz_spec:
+        # Show visualize button
+        button_key = f"viz_btn_{key_suffix}"
+        chart_key = f"show_chart_{key_suffix}"
         
-        elif role == "tool":
-            # Show tool results in a compact expander
-            tool_name = message.get("name", "tool")
-            with st.chat_message("assistant"):
-                with st.expander(f"🔧 {tool_name}", expanded=False):
-                    st.code(content[:500] + "..." if len(content) > 500 else content, language="json")
+        # Initialize chart state for this specific message
+        if chart_key not in st.session_state:
+            st.session_state[chart_key] = False
+        
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("📊 Visualize", key=button_key, use_container_width=True):
+                st.session_state[chart_key] = not st.session_state[chart_key]
+                st.rerun()
+        
+        # Show chart if toggled
+        if st.session_state.get(chart_key, False):
+            try:
+                chart = create_chart(data, viz_spec)
+                st.altair_chart(chart, use_container_width=True)
+            except Exception as e:
+                st.error(f"Could not create chart: {e}")
 
 
 async def handle_user_message(user_input: str):
@@ -149,8 +256,10 @@ async def handle_user_message(user_input: str):
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
         tool_calls_container = st.container()
+        data_container = st.container()
         
         full_response = ""
+        last_sql_result = None
         
         try:
             async for event in chat_stream(
@@ -169,27 +278,40 @@ async def handle_user_message(user_input: str):
                     # Show tool being called
                     tool_name = event["name"]
                     with tool_calls_container:
-                        with st.expander(f"🔧 Calling {tool_name}...", expanded=False):
+                        with st.expander(f"🔧 {tool_name}", expanded=False):
                             st.json(event["arguments"])
                 
                 elif event_type == "tool_result":
-                    # Tool result already shown in expander
-                    pass
+                    # Track SQL results
+                    if event.get("data") and event["data"].get("success"):
+                        last_sql_result = event["data"]
                 
                 elif event_type == "done":
                     # Finished streaming
                     response_placeholder.markdown(full_response)
+                    
+                    # Get SQL result from done event if available
+                    if event.get("sql_result"):
+                        last_sql_result = event["sql_result"]
+                    
                     break
                 
                 elif event_type == "error":
                     st.error(event["content"])
                     return
             
-            # Add assistant response to history
+            # Store the result and show data section
+            if last_sql_result and last_sql_result.get("rows"):
+                st.session_state.last_sql_result = last_sql_result
+                with data_container:
+                    render_data_section(last_sql_result, key_suffix="current")
+            
+            # Add assistant response to history with data
             if full_response:
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": full_response
+                    "content": full_response,
+                    "sql_result": last_sql_result
                 })
         
         except Exception as e:
@@ -203,7 +325,7 @@ def main():
     
     # Check for API key
     if not os.getenv("OPENAI_API_KEY"):
-        st.error("⚠️ OPENAI_API_KEY not found in environment variables. Please set it in your .env file.")
+        st.error("⚠️ OPENAI_API_KEY not found. Please set it in your .env file.")
         st.stop()
     
     # Load MCP tools if not already loaded
@@ -213,18 +335,24 @@ def main():
             if not success:
                 st.warning("Running without MCP tools. Check if the MCP server is running.")
     
-    # Render UI
+    # Render UI - header at top
     render_header()
+    
+    # Chat history in the middle
     render_chat_history()
     
-    # Chat input
-    user_input = st.chat_input("Ask about your database...")
-    
-    if user_input:
-        asyncio.run(handle_user_message(user_input))
-        st.rerun()
+    # Controls and chat input at bottom
+    # Use a container to keep controls close to input
+    with st.container():
+        render_controls()
+        
+        # Chat input
+        user_input = st.chat_input("Ask about your database...")
+        
+        if user_input:
+            asyncio.run(handle_user_message(user_input))
+            st.rerun()
 
 
 if __name__ == "__main__":
     main()
-

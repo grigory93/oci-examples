@@ -5,7 +5,6 @@ This module provides the chat functionality that connects OpenAI's streaming API
 to the MCP server for database operations.
 """
 
-import asyncio
 import json
 import os
 from typing import Any, AsyncIterator, Optional
@@ -89,8 +88,10 @@ async def chat_stream(
             - type: "text" | "tool_call" | "tool_result" | "done" | "error"
             - content: the actual content
             - name: (for tool_call/tool_result) tool name
+            - data: (for tool_result with execute_sql) parsed JSON data
     """
     iteration = 0
+    last_sql_result = None  # Track the last SQL result for visualization
     
     # Add system prompt if not present
     if not any(msg.get("role") == "system" for msg in messages):
@@ -115,7 +116,6 @@ async def chat_stream(
         
         assistant_message_content = ""
         tool_calls_data = []
-        current_tool_call = None
         
         async for chunk in stream:
             delta = chunk.choices[0].delta
@@ -189,10 +189,21 @@ async def chat_stream(
                 # Call MCP tool
                 tool_result = await call_mcp_tool(function_name, function_args)
                 
+                # Parse the result if it's JSON
+                parsed_data = None
+                try:
+                    parsed_data = json.loads(tool_result)
+                    # Track SQL results for visualization
+                    if function_name == "execute_sql" and parsed_data.get("success"):
+                        last_sql_result = parsed_data
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                
                 yield {
                     "type": "tool_result",
                     "name": function_name,
-                    "content": tool_result[:500] + "..." if len(tool_result) > 500 else tool_result
+                    "content": tool_result[:500] + "..." if len(tool_result) > 500 else tool_result,
+                    "data": parsed_data
                 }
                 
                 # Add tool result to messages
@@ -213,7 +224,10 @@ async def chat_stream(
                     "content": assistant_message_content
                 })
             
-            yield {"type": "done"}
+            yield {
+                "type": "done",
+                "sql_result": last_sql_result  # Include last SQL result for visualization
+            }
             break
     
     if iteration >= max_iterations:
@@ -222,3 +236,82 @@ async def chat_stream(
             "content": "Maximum iterations reached"
         }
 
+
+def analyze_data_for_visualization(data: dict) -> Optional[dict]:
+    """
+    Analyze SQL result data and suggest appropriate visualization.
+    
+    Args:
+        data: Parsed SQL result with 'columns' and 'rows'
+        
+    Returns:
+        Visualization spec or None if not suitable for charting
+    """
+    if not data or not data.get("success"):
+        return None
+    
+    rows = data.get("rows", [])
+    columns = data.get("columns", [])
+    
+    if not rows or len(rows) < 2:
+        return None  # Need at least 2 data points for a chart
+    
+    if len(columns) < 2:
+        return None  # Need at least 2 columns (x and y)
+    
+    # Analyze column types from first row
+    first_row = rows[0]
+    numeric_cols = []
+    categorical_cols = []
+    
+    for col in columns:
+        value = first_row.get(col)
+        if isinstance(value, (int, float)):
+            numeric_cols.append(col)
+        else:
+            categorical_cols.append(col)
+    
+    # Decide chart type based on data shape
+    if len(categorical_cols) >= 1 and len(numeric_cols) >= 1:
+        # Best for bar chart: categorical x, numeric y
+        x_col = categorical_cols[0]
+        y_col = numeric_cols[0]
+        
+        # Check if it looks like aggregated data
+        unique_x_values = len(set(row.get(x_col) for row in rows))
+        
+        if unique_x_values == len(rows) and len(rows) <= 20:
+            # Each row is a unique category - good for bar chart
+            return {
+                "type": "bar",
+                "x": {"field": x_col, "label": x_col.replace("_", " ").title()},
+                "y": {"field": y_col, "label": y_col.replace("_", " ").title()},
+                "title": f"{y_col} by {x_col}"
+            }
+    
+    if len(numeric_cols) >= 2:
+        # Could be a scatter plot or line chart
+        x_col = numeric_cols[0]
+        y_col = numeric_cols[1]
+        
+        # Check if x looks like a sequence (dates, IDs, etc.)
+        x_values = [row.get(x_col) for row in rows]
+        if x_values == sorted(x_values):
+            # Ordered data - good for line chart
+            return {
+                "type": "line",
+                "x": {"field": x_col, "label": x_col.replace("_", " ").title()},
+                "y": {"field": y_col, "label": y_col.replace("_", " ").title()},
+                "title": f"{y_col} over {x_col}"
+            }
+    
+    # Default to bar chart if we have suitable columns
+    if categorical_cols and numeric_cols:
+        return {
+            "type": "bar",
+            "x": {"field": categorical_cols[0], "label": categorical_cols[0].replace("_", " ").title()},
+            "y": {"field": numeric_cols[0], "label": numeric_cols[0].replace("_", " ").title()},
+            "title": f"{numeric_cols[0]} by {categorical_cols[0]}"
+        }
+    
+    return None
